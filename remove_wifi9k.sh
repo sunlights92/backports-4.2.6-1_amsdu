@@ -1,4 +1,3 @@
-rmmod module1.ko
 rmmod ath9k.ko
 rmmod ath9k_htc.ko
 rmmod ath9k_common.ko
