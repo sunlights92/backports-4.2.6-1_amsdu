@@ -35,7 +35,116 @@
 #include "wme.h"
 #include "rate.h"
 
+struct gesl_amsdu {
+    struct sk_buff_head skb_q;
+    int skb_cnt;
+    int init;
+} gesl;
+
+void get_contaxt(void)
+{
+    printk("in_interrupt(%d) = in_irq(%d) + in_nmi(%d) + in_softirq(%d),"
+            "in_atomic(%d), irqs_disabled(%d)\n",
+                in_interrupt(), in_irq(), in_nmi(), in_softirq(), 
+                in_atomic(), irqs_disabled());
+}
+
+void hex_dump(char *msg, unsigned char *data, int len)
+{
+    int i;
+    printk("%s(%d):",msg, len);
+    for (i=0; i<len; i++) {
+        printk("%x:", data[i]);
+    }
+    printk("\n");
+}
+
+static void ieee80211_drv_tx(struct ieee80211_local *local,                     
+                 struct ieee80211_vif *vif,                                     
+                 struct ieee80211_sta *pubsta,                                  
+                 struct sk_buff *skb);
 /* misc utils */
+static void gesl_form_amsdu_and_process(struct ieee80211_local *local,                     
+                 struct ieee80211_vif *vif,                                     
+                 struct ieee80211_sta *sta,                                  
+                 struct sk_buff *skb)
+{
+    struct ieee80211_tx_info *info;
+    struct sk_buff *dequeued_skb = NULL;
+    struct sk_buff *amsdu_skb = NULL;
+    struct ethhdr *eth;
+    struct ieee80211_qos_hdr hdr;
+    u8 dst[ETH_ALEN];                                                           
+    u8 src[ETH_ALEN] __aligned(2);
+    u8 padding;
+
+    u16 len;
+    int first_frame = 1;
+ 
+    if (gesl.init == 0) {
+        gesl.init = 1;
+        skb_queue_head_init(&gesl.skb_q);
+    }
+
+    skb_queue_tail(&gesl.skb_q,skb);
+    gesl.skb_cnt++;
+    get_contaxt();
+    if (skb_queue_len(&gesl.skb_q) == 2) {
+
+        while (dequeued_skb = skb_dequeue(&gesl.skb_q)) {
+           // hex_dump("skb_deququ", dequeued_skb->data, dequeued_skb->len);
+            if (first_frame == 1) {
+                first_frame = 0;
+                amsdu_skb = skb_copy_expand(dequeued_skb, 64, 1024*3, GFP_KERNEL);          
+                if (!amsdu_skb) {                                                                 
+                    kfree_skb(dequeued_skb);                                                         
+                    printk("skb_alloc failed\n");                                           
+                    return;                                                                 
+                }
+ 
+               // memcpy(amsdu_skb->cb, dequeued_skb->cb, sizeof(info));
+               // amsdu_skb->dev = dequeued_skb->dev;
+               // amsdu_skb->priority = dequeued_skb->priority;
+                     
+                memcpy(&hdr, amsdu_skb->data, sizeof(struct ieee80211_qos_hdr));
+                u8 *qc = ieee80211_get_qos_ctl(&hdr);
+                *qc |= (IEEE80211_QOS_CTL_A_MSDU_PRESENT);
+                
+                skb_pull(amsdu_skb, sizeof(struct ieee80211_qos_hdr)); 
+                eth = skb_push(amsdu_skb, sizeof(struct ethhdr));
+                
+                memcpy(eth->h_dest, ieee80211_get_DA(&hdr), ETH_ALEN);
+                memcpy(eth->h_source, ieee80211_get_SA(&hdr), ETH_ALEN);
+                
+                len = amsdu_skb->len - sizeof(struct ethhdr);
+                eth->h_proto = htons(len);
+                padding = (4 - amsdu_skb->len) & 0x3;
+                memset(skb_put(amsdu_skb, padding), 0, padding);
+                memcpy(skb_push(amsdu_skb, sizeof(hdr)), &hdr, sizeof(hdr));
+            }
+            else {
+
+                memcpy(&hdr, dequeued_skb->data, sizeof(struct ieee80211_qos_hdr));
+                skb_pull(dequeued_skb, sizeof(struct ieee80211_qos_hdr));     
+                eth = skb_push(dequeued_skb, sizeof(struct ethhdr));               
+                                                                                
+                memcpy(eth->h_dest, ieee80211_get_DA(&hdr), ETH_ALEN);           
+                memcpy(eth->h_source, ieee80211_get_SA(&hdr), ETH_ALEN);         
+                len = dequeued_skb->len - sizeof(struct ethhdr);
+                eth->h_proto = htons(len);
+            
+                memcpy(skb_put(amsdu_skb, dequeued_skb->len), dequeued_skb->data, dequeued_skb->len);
+            }
+
+        kfree_skb(dequeued_skb);                                                         
+        }
+        printk("amsdu_sent******************\n");
+       // hex_dump("amsdu_skb", amsdu_skb->data, amsdu_skb->len);
+        ieee80211_drv_tx(local, vif, sta, amsdu_skb);
+    }
+
+}   
+
 
 static inline void ieee80211_tx_stats(struct net_device *dev, u32 len)
 {
@@ -1250,17 +1359,19 @@ static void ieee80211_drv_tx(struct ieee80211_local *local,
 	if (pubsta) {
 		u8 tid = skb->priority & IEEE80211_QOS_CTL_TID_MASK;
 
+        printk("skb->priority %d tid %d\n", skb->priority, tid);
 		txq = pubsta->txq[tid];
 	} else if (vif) {
 		txq = vif->txq;
 	}
 
-	if (!txq)
+    if (!txq)
 		goto tx_normal;
 
 	ac = txq->ac;
 	txqi = to_txq_info(txq);
 	atomic_inc(&sdata->txqs_len[ac]);
+    printk("&sdata->txqs_len[ac] %d, local->hw.txq_ac_max_pending %d\n",atomic_read(&sdata->txqs_len[ac]), local->hw.txq_ac_max_pending);
 	if (atomic_read(&sdata->txqs_len[ac]) >= local->hw.txq_ac_max_pending)
 		netif_stop_subqueue(sdata->dev, ac);
 
@@ -1381,7 +1492,48 @@ static bool ieee80211_tx_frags(struct ieee80211_local *local,
 		info->control.vif = vif;
 
 		__skb_unlink(skb, skbs);
-		ieee80211_drv_tx(local, vif, sta, skb);
+
+
+#ifndef AMSDU
+       struct ieee80211_qos_hdr *hdr = skb->data;
+       __le16 fc = hdr->frame_control;
+       if (ieee80211_is_data_qos(fc)) {
+            u8 *payload = skb->data + sizeof (struct ieee80211_qos_hdr);
+            u16 ethertype = (payload[6] << 8) | payload[7];
+            if (ethertype != ETH_P_ARP) {
+                gesl_form_amsdu_and_process(local, vif, sta, skb);
+                return true;
+            }       
+        }
+#endif
+#if 0
+        printk("Before %s: skb size:%d\tdata:%d %d\n", __func__, skb->end-skb->head, skb->tail-skb->data, skb->len);
+        printk("skb->cb ptr %p\t skb->cb[0] %d skb->cb[1] %d q_mapping %d\n", info, skb->cb[0], skb->cb[1], skb->queue_mapping);
+        struct sk_buff *new_skb;
+        new_skb = skb_copy_expand(skb, 64, 1024*4, GFP_KERNEL);
+        if (!new_skb) {                                               
+             kfree_skb(skb);                                    
+             printk("skb_alloc failed\n");                               
+             return;                                                     
+        }  
+        kfree_skb(skb);
+
+        skb=new_skb;
+       struct ieee80211_qos_hdr *hdr = skb->data;
+       __le16 fc = hdr->frame_control;
+       if (ieee80211_is_data_qos(fc)) {
+            printk("data_qos\n");
+            u8 *payload = skb->data + sizeof (struct ieee80211_qos_hdr);
+            u16 ethertype = (payload[6] << 8) | payload[7];
+            if (ethertype != ETH_P_ARP) {
+                memset(skb_put(skb, 1400), 0, 1400);
+            }
+        }       
+
+        printk("AFTER %s: skb size:%d\tdata:%d %d\n", __func__, skb->end-skb->head, skb->tail-skb->data, skb->len);
+        printk("skb->cb ptr %p\t skb->cb[0] %d skb->cb[1] %d q_mapping %d\n\n", info, skb->cb[0], skb->cb[1], skb->queue_mapping);
+#endif
+	    ieee80211_drv_tx(local, vif, sta, skb);
 	}
 
 	return true;
@@ -2305,10 +2457,12 @@ static struct sk_buff *ieee80211_build_hdr(struct ieee80211_sub_if_data *sdata,
 		encaps_len = sizeof(bridge_tunnel_header);
 		skip_header_bytes -= 2;
 	} else if (ethertype >= ETH_P_802_3_MIN) {
+        printk("ETH_P_802_3_MIN\n");
 		encaps_data = rfc1042_header;
 		encaps_len = sizeof(rfc1042_header);
 		skip_header_bytes -= 2;
 	} else {
+        printk("else branch\n");
 		encaps_data = NULL;
 		encaps_len = 0;
 	}
@@ -2837,6 +2991,32 @@ static bool ieee80211_xmit_fast(struct ieee80211_sub_if_data *sdata,
 	return true;
 }
 
+void frame_analysis(struct sk_buff *skb)
+{ 
+    static ktime_t rettime, calltime, delta;
+    unsigned long long duration;
+    calltime = ktime_get();
+    delta = ktime_sub(calltime, rettime);
+    duration = (unsigned long long) ktime_to_us(delta);
+    static unsigned long jiff = 0;
+    static unsigned long long  sec = 0;
+    static long len = 0;
+    static unsigned long num = 0;
+    num++;
+    printk("jiff Diff %u Hz %u jiffies %u\n", jiffies - jiff, HZ, jiffies);
+    printk("duration %llu size %u\n", duration, skb->len);
+    sec += duration;
+    len += skb->len;
+    if (sec > 1000000U) {
+        printk("\n****num_of_pac %u\tlen %u\tin time time %lu*******\n\n",num, len, sec);
+        len = 0;
+        num = 0;
+        sec = 0;   
+    }
+    jiff = jiffies;
+    rettime = calltime;
+}
+    
 void __ieee80211_subif_start_xmit(struct sk_buff *skb,
 				  struct net_device *dev,
 				  u32 info_flags)
@@ -2844,8 +3024,39 @@ void __ieee80211_subif_start_xmit(struct sk_buff *skb,
 	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
 	struct sta_info *sta;
 	struct sk_buff *next;
+    
 
-	if (unlikely(skb->len < ETH_HLEN)) {
+    frame_analysis(skb);
+#ifdef SANDEEP
+    struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+    printk("SANDEEP %s: skb size:%d\tdata:%d %d\n", __func__, skb->end-skb->head, skb->tail-skb->data, skb->len);
+    printk("skb->cb ptr %p\t skb->cb[0] %d skb->cb[1] %d\n", info, skb->cb[0], skb->cb[1]);
+#if 0
+    struct sk_buff *new = skb_copy_expand(skb, 32, 1024*3, GFP_KERNEL);
+    if (!new) {
+		kfree_skb(skb);
+        printk("skb_alloc failed\n");
+        return;
+    }
+    printk("headroom %d\n", skb_headroom(new));
+#endif
+#if 0 
+    struct sk_buff *new = alloc_skb(1024*3, GFP_KERNEL);
+    if (!new) {
+		kfree_skb(skb);
+        printk("skb_alloc failed\n");
+        return;
+    }
+    skb_reserve(new, 512);
+    memcpy(skb_put(new, skb->len), skb->data, skb->len);
+#endif
+    printk("SANDEEP %s: new size:%d\tdata:%d %d\n", __func__, new->end-new->head, new->tail-new->data, new->len);
+    info = IEEE80211_SKB_CB(new);
+    printk("new->cb ptr %p\n\n", info);
+	kfree_skb(skb);
+    skb=new;
+#endif
+    if (unlikely(skb->len < ETH_HLEN)) {
 		kfree_skb(skb);
 		return;
 	}

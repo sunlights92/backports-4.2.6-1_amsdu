@@ -2027,8 +2027,10 @@ static void ath_tx_txqaddbuf(struct ath_softc *sc, struct ath_txq *txq,
 	 * pass it on to the hardware.
 	 */
 
-	if (list_empty(head))
+	if (list_empty(head)) {
+        printk("List_head empty\n");
 		return;
+    }
 
 	edma = !!(ah->caps.hw_caps & ATH9K_HW_CAP_EDMA);
 	bf = list_first_entry(head, struct ath_buf, list);
@@ -2058,6 +2060,7 @@ static void ath_tx_txqaddbuf(struct ath_softc *sc, struct ath_txq *txq,
 	if (puttxbuf) {
 		TX_STAT_INC(txq->axq_qnum, puttxbuf);
 		ath9k_hw_puttxbuf(ah, txq->axq_qnum, bf->bf_daddr);
+        printk("ath9k_hw_puttxbuf\n");
 		ath_dbg(common, XMIT, "TXDP[%u] = %llx (%p)\n",
 			txq->axq_qnum, ito64(bf->bf_daddr), bf->bf_desc);
 	}
@@ -2065,6 +2068,7 @@ static void ath_tx_txqaddbuf(struct ath_softc *sc, struct ath_txq *txq,
 	if (!edma || sc->tx99_state) {
 		TX_STAT_INC(txq->axq_qnum, txstart);
 		ath9k_hw_txstart(ah, txq->axq_qnum);
+        printk("ath9k_hw_txstart\n");
 	}
 
 	if (!internal) {
@@ -2305,6 +2309,7 @@ static int ath_tx_prepare(struct ieee80211_hw *hw, struct sk_buff *skb,
 int ath_tx_start(struct ieee80211_hw *hw, struct sk_buff *skb,
 		 struct ath_tx_control *txctl)
 {
+   // printk("before\n");
 	struct ieee80211_hdr *hdr;
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 	struct ieee80211_sta *sta = txctl->sta;
@@ -2317,6 +2322,7 @@ int ath_tx_start(struct ieee80211_hw *hw, struct sk_buff *skb,
 	struct ath_buf *bf;
 	bool queue, skip_uapsd = false, ps_resp;
 	int q, ret;
+//    printk("after\n");
 
 	if (vif)
 		avp = (void *)vif->drv_priv;
@@ -2336,7 +2342,9 @@ int ath_tx_start(struct ieee80211_hw *hw, struct sk_buff *skb,
 	 * info are no longer valid (overwritten by the ath_frame_info data.
 	 */
 
+   // printk("before q mapping\n");
 	q = skb_get_queue_mapping(skb);
+    //printk("after q mapping\n");
 
 	ath_txq_lock(sc, txq);
 	if (txq == sc->tx.txq_map[q]) {
@@ -2365,8 +2373,10 @@ int ath_tx_start(struct ieee80211_hw *hw, struct sk_buff *skb,
 		skip_uapsd = true;
 	}
 
+  //  printk("after q mapping\n");
 	if (txctl->an && queue)
 		tid = ath_get_skb_tid(sc, txctl->an, skb);
+  //  printk("after q mapping\n");
 
 	if (!skip_uapsd && ps_resp) {
 		ath_txq_unlock(sc, txq);
@@ -2391,6 +2401,7 @@ int ath_tx_start(struct ieee80211_hw *hw, struct sk_buff *skb,
 		goto out;
 	}
 
+   // printk("after q mapping\n");
 	bf = ath_tx_setup_buffer(sc, txq, tid, skb);
 	if (!bf) {
 		ath_txq_skb_done(sc, txq, skb);

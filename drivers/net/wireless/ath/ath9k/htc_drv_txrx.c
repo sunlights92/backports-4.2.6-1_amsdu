@@ -19,7 +19,7 @@
 /******/
 /* TX */
 /******/
-
+//SANDEEP What is this in c?
 static const int subtype_txq_to_hwq[] = {
 	[IEEE80211_AC_BE] = ATH_TXQ_AC_BE,
 	[IEEE80211_AC_BK] = ATH_TXQ_AC_BK,
