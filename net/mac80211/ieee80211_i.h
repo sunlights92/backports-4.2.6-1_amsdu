@@ -1094,6 +1094,14 @@ enum mac80211_scan_state {
 };
 
 #ifndef GESL_AMSDU
+
+struct proc_buff {                                                                 
+    int flag;                                                                   
+    char *buff;                                                                 
+    int buff_len, buff_offset;                                                  
+
+};                                                                       
+          
 struct gesl_amsdu {
     struct sk_buff_head skb_q[4];
     int skb_len[4];
@@ -1102,6 +1110,9 @@ struct gesl_amsdu {
     int timer_started;
     struct ieee80211_vif *vif;                                 
     struct ieee80211_sta *sta;
+    struct proc_d *p_data;
+    struct proc_dir_entry *proc_dir;                                            
+    struct proc_dir_entry *proc_file;                                           
     
 };
 #endif    

@@ -478,6 +478,114 @@ static const struct ieee80211_vht_cap mac80211_vht_capa_mod_mask = {
 	},
 };
 
+#ifndef GESL_AMSDU
+
+unsigned int amsdu_flag;
+unsigned int read_flag;
+
+int close_callback(struct inode *inode, struct file *file)                       
+{       
+    printk("%s\n", __func__);
+    if (file->private_data == NULL) {
+        return 0;
+    }            
+    kfree(file->private_data);                              
+    return 0;                                                                   
+}
+                                                                               
+int open_callback(struct inode *inode, struct file *file)                       
+{       
+    read_flag = 0;
+    if (file->private_data == NULL) {
+        file->private_data = kmalloc(sizeof(struct proc_buff), GFP_KERNEL);
+        memset(file->private_data, 0x00, sizeof(struct proc_buff));
+    }                                          
+    return 0;                                                                   
+}                                                                               
+                                                                                
+int read_callback(struct file *file, char __user *data, size_t count, loff_t *offset)
+{       
+    int len = 0;     
+    char *str;                                                                   
+    if (amsdu_flag == 1) {
+        str = "ON\n";
+        len = 3;
+    } else if (amsdu_flag == 0) {
+        str = "OFF\n";
+        len = 4;
+    }
+    else {
+        return 0;
+    }
+    
+    if (copy_to_user(data, (void *)str, len))
+        printk("Error: copy_to_user(%s)\n", __func__);
+    
+    if (read_flag == 0) {
+        read_flag = 1;
+        return len;
+    }
+    return 0;
+                                                                                        
+}                                                                               
+                                                                                
+int write_callback(struct file *file, const char __user *data, size_t count, loff_t *offset)
+{                                                                               
+    if (count > 4)
+        return count;
+
+    if (memcmp(data, "OFF\n", count) == 0) {
+        amsdu_flag = 0;
+    } else if (memcmp(data, "ON\n", count) == 0) {
+        amsdu_flag = 1;
+    } else {
+        printk("Unknown input\n");
+    }
+
+    printk("amsdu_flag %u, count %d\n", amsdu_flag, count);
+
+    return count;                                                                                   
+}       
+
+static const struct file_operations proc_file_fops = {                          
+ .owner = THIS_MODULE,                                                          
+ .open  = open_callback, 
+ .release = close_callback,                                                       
+ .read  = read_callback,                                                        
+ .write  = write_callback,                                                      
+};                                                                              
+                                                                                
+int my_procfs_init(void *ctx)                                                   
+{   
+    printk("%s\n", __func__);                                                                            
+    struct gesl_amsdu *amsdu = (struct gesl_amsdu *) ctx;                              
+#define MODULE_NAME "mac80211"                                                                            
+    amsdu->proc_dir = proc_mkdir(MODULE_NAME, NULL);                           
+    if (amsdu->proc_dir == NULL) {                                             
+        printk("failed: proc_mkdir(%s)\n", __func__);                           
+        return -1;                                                              
+    }                                                                           
+                                                                                
+#define PROC_FILE_NAME "amsdu"                                                   
+    amsdu->proc_file = proc_create(PROC_FILE_NAME, 0666,                       
+                                amsdu->proc_dir, &proc_file_fops);             
+    if(amsdu->proc_file == NULL) {
+        printk("Error: proc_create(%s)\n", __func__);                                           
+        return -ENOMEM;                                                                                                       
+    }                             
+
+    return 0;                                                                                
+}     
+ 
+void my_procfs_deinit(void *ctx)                                                
+{
+    printk("%s: %s\n", __func__, PROC_FILE_NAME);                                                                               
+    struct gesl_amsdu *amsdu = (struct gesl_amsdu *) ctx;                              
+    remove_proc_entry(PROC_FILE_NAME, amsdu->proc_dir);                        
+    remove_proc_entry(MODULE_NAME, NULL);                                       
+                                                                                
+}
+  
 extern void gesl_process_amsdu(unsigned long data);
 
 void gesl_amsdu_init(struct ieee80211_local *local)
@@ -494,9 +602,11 @@ void gesl_amsdu_init(struct ieee80211_local *local)
     amsdu->timer.data = (unsigned long) local;
     amsdu->timer.function = gesl_process_amsdu;                                       
     amsdu->timer.expires = jiffies + 2;                  
- //   add_timer(&g_data.timer); 
+ //   add_timer(&g_data.timer);
+    my_procfs_init(amsdu); 
 }
 
+#endif
 
 struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 					   const struct ieee80211_ops *ops,
@@ -1241,6 +1351,9 @@ void ieee80211_free_hw(struct ieee80211_hw *hw)
 
 	ieee80211_free_led_names(local);
 
+#ifndef GESL_AMSDU
+    my_procfs_deinit(&local->amsdu);
+#endif
 	wiphy_free(local->hw.wiphy);
 }
 EXPORT_SYMBOL(ieee80211_free_hw);

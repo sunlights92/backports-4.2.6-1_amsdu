@@ -35,6 +35,7 @@
 #include "wme.h"
 #include "rate.h"
 
+#ifndef GESL_AMSDU
 void gesl_process_amsdu(unsigned long data);
 
 void get_contaxt(void)
@@ -69,8 +70,7 @@ static void gesl_form_amsdu_and_process(struct ieee80211_local *local,
                  struct sk_buff *skb)
 {
 
-    printk("******** %s ***********\n", __func__);
-    get_contaxt();
+    printk("****************** %s\n", __func__);
     struct gesl_amsdu *amsdu = &local->amsdu;
 
     amsdu->vif = vif;
@@ -90,7 +90,7 @@ static void gesl_form_amsdu_and_process(struct ieee80211_local *local,
     }
 #endif
  
-    if (amsdu->skb_len[0] + skb->len > 3839) { //3839
+    if (amsdu->skb_len[0] + skb->len > 3839) {
         del_timer(&amsdu->timer);
         gesl_process_amsdu((unsigned long) local);
     }
@@ -108,7 +108,7 @@ static void gesl_form_amsdu_and_process(struct ieee80211_local *local,
 
 void gesl_process_amsdu(unsigned long data) 
 {
-    printk("******** %s ***********\n", __func__);
+    printk("****************** %s\n", __func__);
     struct ieee80211_local *local = (struct ieee80211_local *) data;
     struct gesl_amsdu *amsdu = &local->amsdu;
     struct sk_buff *dequeued_skb = NULL;
@@ -190,7 +190,7 @@ void gesl_process_amsdu(unsigned long data)
     ieee80211_drv_tx(local, amsdu->vif, amsdu->sta, amsdu_skb);
 }
 
-
+#endif
 static inline void ieee80211_tx_stats(struct net_device *dev, u32 len)
 {
 	struct pcpu_sw_netstats *tstats = this_cpu_ptr(netdev_tstats(dev));
@@ -1540,16 +1540,19 @@ static bool ieee80211_tx_frags(struct ieee80211_local *local,
 		__skb_unlink(skb, skbs);
 
 
-#ifndef AMSDU
-       struct ieee80211_qos_hdr *hdr = skb->data;
-       __le16 fc = hdr->frame_control;
-       if (ieee80211_is_data_qos(fc)) {
-            u8 *payload = skb->data + sizeof (struct ieee80211_qos_hdr);
-            u16 ethertype = (payload[6] << 8) | payload[7];
-            if (ethertype != ETH_P_ARP) {
-                gesl_form_amsdu_and_process(local, vif, sta, skb);
-                return true;
-            }       
+#ifndef GESL_AMSDU
+extern unsigned int amsdu_flag;
+        if (amsdu_flag == 1) {
+            struct ieee80211_qos_hdr *hdr = skb->data;
+            __le16 fc = hdr->frame_control;
+            if (ieee80211_is_data_qos(fc)) {
+                u8 *payload = skb->data + sizeof (struct ieee80211_qos_hdr);
+                u16 ethertype = (payload[6] << 8) | payload[7];
+                if (ethertype != ETH_P_ARP) {
+                    gesl_form_amsdu_and_process(local, vif, sta, skb);
+                    return true;
+                }       
+            }
         }
 #endif
 #if 0
@@ -3048,7 +3051,7 @@ void frame_analysis(struct sk_buff *skb)
     static unsigned long num = 0;
     num++;
     //printk("jiff Diff %u Hz %u jiffies %u\n", jiffies - jiff, HZ, jiffies);
-    //printk("duration %llu size %u\n", duration, skb->len);
+    printk("duration %llu size %u\n", duration, skb->len);
     sec += duration;
     len += skb->len;
     if (sec > 1000000U) {
