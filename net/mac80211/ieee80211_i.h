@@ -1093,6 +1093,19 @@ enum mac80211_scan_state {
 	SCAN_ABORT,
 };
 
+#ifndef GESL_AMSDU
+struct gesl_amsdu {
+    struct sk_buff_head skb_q[4];
+    int skb_len[4];
+    int skb_cnt[4];
+    struct timer_list timer;
+    int timer_started;
+    struct ieee80211_vif *vif;                                 
+    struct ieee80211_sta *sta;
+    
+};
+#endif    
+
 struct ieee80211_local {
 	/* embed the driver visible part.
 	 * don't cast (use the static inlines below), but we keep
@@ -1350,6 +1363,10 @@ struct ieee80211_local {
 	struct ieee80211_sub_if_data __rcu *p2p_sdata;
 
 	struct napi_struct *napi;
+    
+#ifndef GESL_AMSDU
+    struct gesl_amsdu amsdu;
+#endif
 
 	/* virtual monitor interface */
 	struct ieee80211_sub_if_data __rcu *monitor_sdata;

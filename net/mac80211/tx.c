@@ -35,11 +35,7 @@
 #include "wme.h"
 #include "rate.h"
 
-struct gesl_amsdu {
-    struct sk_buff_head skb_q;
-    int skb_cnt;
-    int init;
-} gesl;
+void gesl_process_amsdu(unsigned long data);
 
 void get_contaxt(void)
 {
@@ -47,6 +43,9 @@ void get_contaxt(void)
             "in_atomic(%d), irqs_disabled(%d)\n",
                 in_interrupt(), in_irq(), in_nmi(), in_softirq(), 
                 in_atomic(), irqs_disabled());
+    printk("smp_processor_id(%d)\n", smp_processor_id());
+//    printk("get_cpu(%d)\n", get_cpu());
+//    put_cpu();
 }
 
 void hex_dump(char *msg, unsigned char *data, int len)
@@ -69,81 +68,127 @@ static void gesl_form_amsdu_and_process(struct ieee80211_local *local,
                  struct ieee80211_sta *sta,                                  
                  struct sk_buff *skb)
 {
-    struct ieee80211_tx_info *info;
+
+    printk("******** %s ***********\n", __func__);
+    get_contaxt();
+    struct gesl_amsdu *amsdu = &local->amsdu;
+
+    amsdu->vif = vif;
+    amsdu->sta = sta;  
+ 
+    if (skb->len > 1500) {
+        del_timer(&amsdu->timer);
+        gesl_process_amsdu((unsigned long) local);
+        ieee80211_drv_tx(local, vif, sta, skb);
+        return;
+    }
+#if 0    
+    if (amsdu->skb_cnt[0] >= 10) { 
+        printk("coming here 2\n");
+        del_timer(&amsdu->timer);
+        gesl_process_amsdu((unsigned long) local);
+    }
+#endif
+ 
+    if (amsdu->skb_len[0] + skb->len > 3839) { //3839
+        del_timer(&amsdu->timer);
+        gesl_process_amsdu((unsigned long) local);
+    }
+       
+    skb_queue_tail(&amsdu->skb_q[0],skb);
+    amsdu->skb_cnt[0]++;
+    amsdu->skb_len[0] += skb->len;
+ 
+    if (amsdu->timer_started == 0) {
+        mod_timer(&amsdu->timer, jiffies+2);
+        amsdu->timer_started = 1;
+    }
+ 
+}
+
+void gesl_process_amsdu(unsigned long data) 
+{
+    printk("******** %s ***********\n", __func__);
+    struct ieee80211_local *local = (struct ieee80211_local *) data;
+    struct gesl_amsdu *amsdu = &local->amsdu;
     struct sk_buff *dequeued_skb = NULL;
+    struct ieee80211_tx_info *info;
     struct sk_buff *amsdu_skb = NULL;
     struct ethhdr *eth;
     struct ieee80211_qos_hdr hdr;
     u8 dst[ETH_ALEN];                                                           
     u8 src[ETH_ALEN] __aligned(2);
     u8 padding;
-
+    u8 first_frame = 1;
     u16 len;
-    int first_frame = 1;
- 
-    if (gesl.init == 0) {
-        gesl.init = 1;
-        skb_queue_head_init(&gesl.skb_q);
+
+
+    amsdu->timer_started = 0;
+        
+    if (skb_queue_len(&amsdu->skb_q[0]) == 0)
+        return;
+
+    if (skb_queue_len(&amsdu->skb_q[0]) == 1) {
+        dequeued_skb = skb_dequeue(&amsdu->skb_q[0]);
+        amsdu->skb_cnt[0] = 0;                                                        
+        amsdu->skb_len[0] = 0;
+        ieee80211_drv_tx(local, amsdu->vif, amsdu->sta, dequeued_skb);
+        return;
     }
 
-    skb_queue_tail(&gesl.skb_q,skb);
-    gesl.skb_cnt++;
-    get_contaxt();
-    if (skb_queue_len(&gesl.skb_q) == 2) {
-
-        while (dequeued_skb = skb_dequeue(&gesl.skb_q)) {
-           // hex_dump("skb_deququ", dequeued_skb->data, dequeued_skb->len);
-            if (first_frame == 1) {
-                first_frame = 0;
-                amsdu_skb = skb_copy_expand(dequeued_skb, 64, 1024*3, GFP_KERNEL);          
-                if (!amsdu_skb) {                                                                 
-                    kfree_skb(dequeued_skb);                                                         
-                    printk("skb_alloc failed\n");                                           
-                    return;                                                                 
-                }
- 
-               // memcpy(amsdu_skb->cb, dequeued_skb->cb, sizeof(info));
-               // amsdu_skb->dev = dequeued_skb->dev;
-               // amsdu_skb->priority = dequeued_skb->priority;
-                     
-                memcpy(&hdr, amsdu_skb->data, sizeof(struct ieee80211_qos_hdr));
-                u8 *qc = ieee80211_get_qos_ctl(&hdr);
-                *qc |= (IEEE80211_QOS_CTL_A_MSDU_PRESENT);
-                
-                skb_pull(amsdu_skb, sizeof(struct ieee80211_qos_hdr)); 
-                eth = skb_push(amsdu_skb, sizeof(struct ethhdr));
-                
-                memcpy(eth->h_dest, ieee80211_get_DA(&hdr), ETH_ALEN);
-                memcpy(eth->h_source, ieee80211_get_SA(&hdr), ETH_ALEN);
-                
-                len = amsdu_skb->len - sizeof(struct ethhdr);
-                eth->h_proto = htons(len);
-                padding = (4 - amsdu_skb->len) & 0x3;
-                memset(skb_put(amsdu_skb, padding), 0, padding);
-                memcpy(skb_push(amsdu_skb, sizeof(hdr)), &hdr, sizeof(hdr));
+    while (dequeued_skb = skb_dequeue(&amsdu->skb_q[0])) {
+        if (first_frame == 1) {
+            first_frame = 0;
+            amsdu_skb = skb_copy_expand(dequeued_skb, 64, 1024*3, in_atomic() ? GFP_ATOMIC : GFP_KERNEL);          
+            if (!amsdu_skb) {                                                                 
+                kfree_skb(dequeued_skb);                                                         
+                printk("skb_alloc failed\n");                                           
+                return;                                                                 
             }
-            else {
 
-                memcpy(&hdr, dequeued_skb->data, sizeof(struct ieee80211_qos_hdr));
-                skb_pull(dequeued_skb, sizeof(struct ieee80211_qos_hdr));     
-                eth = skb_push(dequeued_skb, sizeof(struct ethhdr));               
-                                                                                
-                memcpy(eth->h_dest, ieee80211_get_DA(&hdr), ETH_ALEN);           
-                memcpy(eth->h_source, ieee80211_get_SA(&hdr), ETH_ALEN);         
-                len = dequeued_skb->len - sizeof(struct ethhdr);
-                eth->h_proto = htons(len);
-            
-                memcpy(skb_put(amsdu_skb, dequeued_skb->len), dequeued_skb->data, dequeued_skb->len);
-            }
+            // memcpy(amsdu_skb->cb, dequeued_skb->cb, sizeof(info));
+            // amsdu_skb->dev = dequeued_skb->dev;
+            // amsdu_skb->priority = dequeued_skb->priority;
+
+            memcpy(&hdr, amsdu_skb->data, sizeof(struct ieee80211_qos_hdr));
+            u8 *qc = ieee80211_get_qos_ctl(&hdr);
+            *qc |= (IEEE80211_QOS_CTL_A_MSDU_PRESENT);
+
+            skb_pull(amsdu_skb, sizeof(struct ieee80211_qos_hdr)); 
+            eth = skb_push(amsdu_skb, sizeof(struct ethhdr));
+
+            memcpy(eth->h_dest, ieee80211_get_DA(&hdr), ETH_ALEN);
+            memcpy(eth->h_source, ieee80211_get_SA(&hdr), ETH_ALEN);
+
+            len = amsdu_skb->len - sizeof(struct ethhdr);
+            eth->h_proto = htons(len);
+            padding = (4 - amsdu_skb->len) & 0x3;
+            memset(skb_put(amsdu_skb, padding), 0, padding);
+            memcpy(skb_push(amsdu_skb, sizeof(hdr)), &hdr, sizeof(hdr));
+        }
+        else {
+
+            memcpy(&hdr, dequeued_skb->data, sizeof(struct ieee80211_qos_hdr));
+            skb_pull(dequeued_skb, sizeof(struct ieee80211_qos_hdr));     
+            eth = skb_push(dequeued_skb, sizeof(struct ethhdr));               
+
+            memcpy(eth->h_dest, ieee80211_get_DA(&hdr), ETH_ALEN);           
+            memcpy(eth->h_source, ieee80211_get_SA(&hdr), ETH_ALEN);         
+            len = dequeued_skb->len - sizeof(struct ethhdr);
+            eth->h_proto = htons(len);
+
+            memcpy(skb_put(amsdu_skb, dequeued_skb->len), dequeued_skb->data, dequeued_skb->len);
+            padding = (4 - dequeued_skb->len) & 3;
+            memset(skb_put(amsdu_skb, padding), 0, padding);
+        }
 
         kfree_skb(dequeued_skb);                                                         
-        }
-        printk("amsdu_sent******************\n");
-       // hex_dump("amsdu_skb", amsdu_skb->data, amsdu_skb->len);
-        ieee80211_drv_tx(local, vif, sta, amsdu_skb);
     }
-
-}   
+    printk("amsdu->skb_cnt[0] %d\tamsdu->skb_len[0] %d\n", amsdu->skb_cnt[0], amsdu->skb_len[0]);
+    amsdu->skb_cnt[0] = 0;                                                        
+    amsdu->skb_len[0] = 0;
+    ieee80211_drv_tx(local, amsdu->vif, amsdu->sta, amsdu_skb);
+}
 
 
 static inline void ieee80211_tx_stats(struct net_device *dev, u32 len)
@@ -1359,7 +1404,7 @@ static void ieee80211_drv_tx(struct ieee80211_local *local,
 	if (pubsta) {
 		u8 tid = skb->priority & IEEE80211_QOS_CTL_TID_MASK;
 
-        printk("skb->priority %d tid %d\n", skb->priority, tid);
+    //    printk("skb->priority %d tid %d\n", skb->priority, tid);
 		txq = pubsta->txq[tid];
 	} else if (vif) {
 		txq = vif->txq;
@@ -1381,6 +1426,7 @@ static void ieee80211_drv_tx(struct ieee80211_local *local,
 	return;
 
 tx_normal:
+    printk("drv_tx : %d\n", skb->len);
 	drv_tx(local, &control, skb);
 }
 
@@ -2457,12 +2503,10 @@ static struct sk_buff *ieee80211_build_hdr(struct ieee80211_sub_if_data *sdata,
 		encaps_len = sizeof(bridge_tunnel_header);
 		skip_header_bytes -= 2;
 	} else if (ethertype >= ETH_P_802_3_MIN) {
-        printk("ETH_P_802_3_MIN\n");
 		encaps_data = rfc1042_header;
 		encaps_len = sizeof(rfc1042_header);
 		skip_header_bytes -= 2;
 	} else {
-        printk("else branch\n");
 		encaps_data = NULL;
 		encaps_len = 0;
 	}
@@ -3003,8 +3047,8 @@ void frame_analysis(struct sk_buff *skb)
     static long len = 0;
     static unsigned long num = 0;
     num++;
-    printk("jiff Diff %u Hz %u jiffies %u\n", jiffies - jiff, HZ, jiffies);
-    printk("duration %llu size %u\n", duration, skb->len);
+    //printk("jiff Diff %u Hz %u jiffies %u\n", jiffies - jiff, HZ, jiffies);
+    //printk("duration %llu size %u\n", duration, skb->len);
     sec += duration;
     len += skb->len;
     if (sec > 1000000U) {

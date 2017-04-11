@@ -478,6 +478,26 @@ static const struct ieee80211_vht_cap mac80211_vht_capa_mod_mask = {
 	},
 };
 
+extern void gesl_process_amsdu(unsigned long data);
+
+void gesl_amsdu_init(struct ieee80211_local *local)
+{
+    int i;
+    struct gesl_amsdu *amsdu = &local->amsdu;
+    
+    for (i=0; i<4; i++) {
+        skb_queue_head_init(&amsdu->skb_q[i]); 
+        amsdu->skb_cnt[i] = 0;
+    }
+    amsdu->timer_started = 0;
+    init_timer(&amsdu->timer);
+    amsdu->timer.data = (unsigned long) local;
+    amsdu->timer.function = gesl_process_amsdu;                                       
+    amsdu->timer.expires = jiffies + 2;                  
+ //   add_timer(&g_data.timer); 
+}
+
+
 struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 					   const struct ieee80211_ops *ops,
 					   const char *requested_name)
@@ -649,6 +669,10 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 	ieee80211_alloc_led_names(local);
 
 	ieee80211_roc_setup(local);
+
+#ifndef GESL_AMSDU
+    gesl_amsdu_init(local);
+#endif
 
 	return &local->hw;
  err_free:
