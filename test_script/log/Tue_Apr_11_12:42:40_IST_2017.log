@@ -1,0 +1,11 @@
+wpa_supplicant started
+Tue Apr 11 12:42:44 IST 2017
+AMSDU OFF
+packet_size = 50
+iperf -u -c 192.168.1.221 -l 50 -b 100000M
+------------------------------------------------------------
+Client connecting to 192.168.1.221, UDP port 5001
+Sending 50 byte datagrams
+UDP buffer size:  160 KByte (default)
+------------------------------------------------------------
+[  3] local 192.168.1.11 port 34388 connected with 192.168.1.221 port 5001

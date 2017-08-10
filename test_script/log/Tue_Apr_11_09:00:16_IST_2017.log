@@ -1,0 +1,143 @@
+wpa_supplicant started
+Tue Apr 11 09:00:20 IST 2017
+AMSDU OFF
+packet_size = 200
+iperf -u -c 192.168.1.221 -l 200 -b 1000000000
+------------------------------------------------------------
+Client connecting to 192.168.1.221, UDP port 5001
+Sending 200 byte datagrams
+UDP buffer size:  160 KByte (default)
+------------------------------------------------------------
+[  3] local 192.168.1.11 port 42513 connected with 192.168.1.221 port 5001
+[ ID] Interval       Transfer     Bandwidth
+[  3]  0.0-10.0 sec  37.8 MBytes  31.7 Mbits/sec
+[  3] Sent 197983 datagrams
+[  3] Server Report:
+[  3]  0.0-46183.2 sec  37.4 MBytes  6.79 Kbits/sec   0.182 ms 1915/197982 (0.97%)
+[  3]  0.0-46183.2 sec  1 datagrams received out-of-order
+
+
+Tue Apr 11 09:00:31 IST 2017
+AMSDU ON
+packet_size = 200
+iperf -u -c 192.168.1.221 -l 200 -b 1000000000
+------------------------------------------------------------
+Client connecting to 192.168.1.221, UDP port 5001
+Sending 200 byte datagrams
+UDP buffer size:  160 KByte (default)
+------------------------------------------------------------
+[  3] local 192.168.1.11 port 51947 connected with 192.168.1.221 port 5001
+[ ID] Interval       Transfer     Bandwidth
+[  3]  0.0-10.0 sec  83.2 MBytes  69.7 Mbits/sec
+[  3] Sent 436030 datagrams
+[  3] Server Report:
+[  3]  0.0-46194.3 sec  83.2 MBytes  15.1 Kbits/sec   0.316 ms   20/436029 (0.0046%)
+[  3]  0.0-46194.3 sec  21 datagrams received out-of-order
+
+
+
+
+Tue Apr 11 09:00:42 IST 2017
+AMSDU OFF
+packet_size = 200
+iperf -c 192.168.1.221 -M 200
+------------------------------------------------------------
+Client connecting to 192.168.1.221, TCP port 5001
+TCP window size: 23.8 KByte (default)
+------------------------------------------------------------
+[  3] local 192.168.1.11 port 58364 connected with 192.168.1.221 port 5001
+[ ID] Interval       Transfer     Bandwidth
+[  3]  0.0-10.1 sec  21.8 MBytes  18.1 Mbits/sec
+
+
+Tue Apr 11 09:00:53 IST 2017
+AMSDU ON
+packet_size = 200
+iperf -c 192.168.1.221 -M 200
+------------------------------------------------------------
+Client connecting to 192.168.1.221, TCP port 5001
+TCP window size: 23.8 KByte (default)
+------------------------------------------------------------
+[  3] local 192.168.1.11 port 58365 connected with 192.168.1.221 port 5001
+[ ID] Interval       Transfer     Bandwidth
+[  3]  0.0-10.0 sec  57.8 MBytes  48.4 Mbits/sec
+
+
+
+
+Tue Apr 11 09:01:04 IST 2017
+AMSDU OFF
+packet_size = 250
+iperf -u -c 192.168.1.221 -l 250 -b 1000000000
+------------------------------------------------------------
+Client connecting to 192.168.1.221, UDP port 5001
+Sending 250 byte datagrams
+UDP buffer size:  160 KByte (default)
+------------------------------------------------------------
+[  3] local 192.168.1.11 port 41190 connected with 192.168.1.221 port 5001
+[ ID] Interval       Transfer     Bandwidth
+[  3]  0.0-10.0 sec  76.5 MBytes  64.1 Mbits/sec
+[  3] Sent 320715 datagrams
+[  3] Server Report:
+[  3]  0.0-46227.2 sec  75.8 MBytes  13.8 Kbits/sec   0.107 ms 2825/320714 (0.88%)
+[  3]  0.0-46227.2 sec  1 datagrams received out-of-order
+
+
+Tue Apr 11 09:01:15 IST 2017
+AMSDU ON
+packet_size = 250
+iperf -u -c 192.168.1.221 -l 250 -b 1000000000
+------------------------------------------------------------
+Client connecting to 192.168.1.221, UDP port 5001
+Sending 250 byte datagrams
+UDP buffer size:  160 KByte (default)
+------------------------------------------------------------
+[  3] local 192.168.1.11 port 59119 connected with 192.168.1.221 port 5001
+[ ID] Interval       Transfer     Bandwidth
+[  3]  0.0-10.0 sec  94.6 MBytes  79.4 Mbits/sec
+[  3] Sent 396952 datagrams
+[  3] Server Report:
+[  3]  0.0-46238.3 sec  81.6 MBytes  14.8 Kbits/sec   0.265 ms 54491/396951 (14%)
+[  3]  0.0-46238.3 sec  1 datagrams received out-of-order
+
+
+
+
+Tue Apr 11 09:01:26 IST 2017
+AMSDU OFF
+packet_size = 250
+iperf -c 192.168.1.221 -M 250
+------------------------------------------------------------
+Client connecting to 192.168.1.221, TCP port 5001
+TCP window size: 23.8 KByte (default)
+------------------------------------------------------------
+[  3] local 192.168.1.11 port 58366 connected with 192.168.1.221 port 5001
+[ ID] Interval       Transfer     Bandwidth
+[  3]  0.0-10.0 sec  38.5 MBytes  32.2 Mbits/sec
+
+
+Tue Apr 11 09:01:37 IST 2017
+AMSDU ON
+packet_size = 250
+iperf -c 192.168.1.221 -M 250
+------------------------------------------------------------
+Client connecting to 192.168.1.221, TCP port 5001
+TCP window size: 23.8 KByte (default)
+------------------------------------------------------------
+[  3] local 192.168.1.11 port 58367 connected with 192.168.1.221 port 5001
+[ ID] Interval       Transfer     Bandwidth
+[  3]  0.0-10.0 sec  63.9 MBytes  53.4 Mbits/sec
+
+
+
+
+Tue Apr 11 09:01:48 IST 2017
+AMSDU OFF
+packet_size = 300
+iperf -u -c 192.168.1.221 -l 300 -b 1000000000
+------------------------------------------------------------
+Client connecting to 192.168.1.221, UDP port 5001
+Sending 300 byte datagrams
+UDP buffer size:  160 KByte (default)
+------------------------------------------------------------
+[  3] local 192.168.1.11 port 58880 connected with 192.168.1.221 port 5001

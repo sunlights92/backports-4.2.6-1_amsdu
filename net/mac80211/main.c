@@ -35,6 +35,7 @@
 #include "cfg.h"
 #include "debugfs.h"
 
+#include <linux/proc_fs.h>
 void ieee80211_configure_filter(struct ieee80211_local *local)
 {
 	u64 mc;
